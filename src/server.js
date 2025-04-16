@@ -23,10 +23,17 @@ app.use(cors({
     origin: '*',
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type']
-}));
+}), (req, res, next) => {
+    console.log('CORS middleware triggered');
+    next();
+});
 
 // Đảm bảo middleware express.json() được gọi trước các route
-app.use(express.json());
+app.use(express.json(), (req, res, next) => {
+    console.log('Middleware parsed body:', req.body);
+    console.log('Request body:', req.body);
+    next();
+});
 
 // Định nghĩa các route
 app.use('/api/topics', topicsRouter);
