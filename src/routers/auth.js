@@ -20,6 +20,7 @@ const handleLogin = async (tableName, userIdField, userId, password, res) => {
 
         const user = result.recordset[0];
         const hashedPassword = user.MatKhau;
+        const maNganh = user.MaNganh;
 
         if (!hashedPassword) {
             return res.status(401).json({ message: 'Mật khẩu không tồn tại' });
@@ -31,9 +32,15 @@ const handleLogin = async (tableName, userIdField, userId, password, res) => {
         }
 
         const isDefaultPassword = await bcrypt.compare('123@123', hashedPassword);
-        console.log('Hashed Password:', hashedPassword);
-        console.log('Is Default Password:', isDefaultPassword);
+
         if (isDefaultPassword) {
+            if (!['101', '103'].includes(maNganh)) {
+                return res.status(403).json({
+                    message: 'Ngành của bạn chưa được hỗ trợ, vui lòng chờ trong tương lai.',
+                    redirect: null,
+                    userId: user[userIdField]
+                });
+            }
             return res.status(200).json({
                 message: 'Mật khẩu mặc định, cần đổi mật khẩu',
                 redirect: 'changePassword',
@@ -43,30 +50,24 @@ const handleLogin = async (tableName, userIdField, userId, password, res) => {
 
         return res.status(200).json({
             message: 'Đăng nhập thành công',
-            redirect: tableName.toLowerCase(),
+            redirect: 'home',
             userId: user[userIdField]
         });
     } catch (error) {
-        console.error(`Error during ${tableName} login:`, error);
         return res.status(500).json({ message: 'Lỗi server' });
     }
 };
 
 router.post('/login', async (req, res) => {
-    console.log('Request body:', req.body);
     const { maSV, matKhau } = req.body;
-
-    console.log('Received login request:', { maSV, matKhau });
 
     try {
         if (!maSV || !matKhau) {
-            console.log('Missing maSV or matKhau');
             return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin' });
         }
 
         await handleLogin('SinhVien', 'MaSV', maSV, matKhau, res);
     } catch (error) {
-        console.error('Error during login:', error);
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
@@ -110,8 +111,6 @@ router.post('/lecturer/login', async (req, res) => {
         }
 
         const isDefaultPassword = await bcrypt.compare('123@123', hashedPassword);
-        console.log('Hashed Password:', hashedPassword);
-        console.log('Is Default Password:', isDefaultPassword);
         if (isDefaultPassword) {
             return res.status(200).json({
                 message: 'Mật khẩu mặc định, cần đổi mật khẩu',
@@ -126,7 +125,6 @@ router.post('/lecturer/login', async (req, res) => {
             maGV: lecturer.MaGV
         });
     } catch (error) {
-        console.error('Error during lecturer login:', error);
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
@@ -162,7 +160,74 @@ router.post('/change-password', async (req, res) => {
 
         res.status(200).json({ message: 'Đổi mật khẩu thành công' });
     } catch (error) {
-        console.error('Error changing password:', error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+});
+
+router.get('/user-info', async (req, res) => {
+    const maSV = req.query.maSV;
+    const maGV = req.query.maGV;
+
+    try {
+        let result;
+        if (maSV) {
+            result = await dbService.query(
+                'SELECT HoLot + \' \' + Ten AS HoTen FROM SinhVien WHERE MaSV = @param0',
+                [maSV]
+            );
+            if (result.recordset.length === 0) {
+                return res.status(404).json({ message: 'Sinh viên không tồn tại' });
+            }
+            return res.status(200).json({ HoTen: result.recordset[0].HoTen });
+        } else if (maGV) {
+            result = await dbService.query(
+                'SELECT HoTen FROM GiangVien WHERE MaGV = @param0',
+                [maGV]
+            );
+            if (result.recordset.length === 0) {
+                return res.status(404).json({ message: 'Giảng viên không tồn tại' });
+            }
+            return res.status(200).json({ HoTen: result.recordset[0].HoTen });
+        } else {
+            return res.status(400).json({ message: 'Vui lòng cung cấp maSV hoặc maGV' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+});
+
+// Cập nhật endpoint để lấy thông tin chi tiết của sinh viên
+router.get('/students/:maSV', async (req, res) => {
+    const { maSV } = req.params;
+
+    try {
+        const result = await dbService.query(
+            'SELECT HoLot, Ten, NgaySinh, MaNganh, Email, SoDienThoai FROM SinhVien WHERE MaSV = @param0',
+            [maSV]
+        );
+        if (result.recordset.length === 0) {
+            return res.status(404).json({ message: 'Sinh viên không tồn tại' });
+        }
+        return res.status(200).json(result.recordset[0]);
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+});
+
+// Thêm endpoint để lấy thông tin chi tiết của giảng viên
+router.get('/lecturers/:maGV', async (req, res) => {
+    const { maGV } = req.params;
+
+    try {
+        const result = await dbService.query(
+            'SELECT HoTen, MaNganh, Email, SoDienThoai, MaKhoa, ChuyenNganh FROM GiangVien WHERE MaGV = @param0',
+            [maGV]
+        );
+        if (result.recordset.length === 0) {
+            return res.status(404).json({ message: 'Giảng viên không tồn tại' });
+        }
+        return res.status(200).json(result.recordset[0]);
+    } catch (error) {
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
